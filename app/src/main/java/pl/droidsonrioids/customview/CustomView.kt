@@ -1,19 +1,24 @@
 package pl.droidsonrioids.customview
 
+import android.animation.AnimatorSet
+import android.animation.TimeInterpolator
 import android.animation.ValueAnimator
 import android.animation.ValueAnimator.INFINITE
 import android.animation.ValueAnimator.RESTART
+import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RectF
-import android.os.Parcelable
+import android.graphics.*
+import android.support.animation.DynamicAnimation
+import android.support.animation.FloatValueHolder
+import android.support.animation.SpringAnimation
+import android.support.animation.SpringForce
+import android.support.animation.SpringForce.STIFFNESS_LOW
+import android.support.v4.view.animation.FastOutSlowInInterpolator
 import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
-import kotlinx.android.parcel.Parcelize
+import android.view.animation.AccelerateDecelerateInterpolator
 
 
 class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0, defStyleRes: Int = 0) : View(context, attrs, defStyleAttr, defStyleRes) {
@@ -35,13 +40,38 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         }
 
         override fun onScroll(start: MotionEvent, end: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
+            cancelSpring()
             with(translation) {
                 translation = first - distanceX to second - distanceY
             }
             return true
         }
 
+        override fun onFling(start: MotionEvent, end: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+            return onScrollEnd(velocityX, velocityY)
+        }
+
     }
+
+    private fun cancelSpring() {
+        springX.cancel()
+        springY.cancel()
+    }
+
+    private fun onScrollEnd(velocityX: Float, velocityY: Float): Boolean {
+        val (x, y) = translation
+        if (x != 0f && y != 0f) {
+            springX.setStartVelocity(velocityX)
+                    .setStartValue(x)
+                    .animateToFinalPosition(0f)
+            springY.setStartVelocity(velocityY)
+                    .setStartValue(y)
+                    .animateToFinalPosition(0f)
+            return true
+        }
+        return false
+    }
+
     private val touchArea = RectF()
 
     private val detector = GestureDetector(context, detectorListener)
@@ -52,17 +82,26 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         invalidate()
     }
 
+    private val springX = SpringAnimation(FloatValueHolder()).setSpring(SpringForce().setStiffness(STIFFNESS_LOW))
+    private val springY = SpringAnimation(FloatValueHolder()).setSpring(SpringForce().setStiffness(STIFFNESS_LOW))
+    private val springXListener = DynamicAnimation.OnAnimationUpdateListener { _, value, _ -> translation = value to translation.second }
+    private val springYListener = DynamicAnimation.OnAnimationUpdateListener { _, value, _ -> translation = translation.first to value }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         animator.addUpdateListener(listener)
+        springX.addUpdateListener(springXListener)
+        springY.addUpdateListener(springYListener)
         animator.start()
     }
 
     override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
         animator.removeUpdateListener(listener)
+        springX.removeUpdateListener(springXListener)
+        springY.removeUpdateListener(springYListener)
         animator.cancel()
-
+        cancelSpring()
+        super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -93,7 +132,8 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         touchArea.set(left + translationX, top + translationY, right + translationX, bottom + translationY)
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        return detector.onTouchEvent(event)
+        return detector.onTouchEvent(event) || (event.action == MotionEvent.ACTION_UP && onScrollEnd(0f, 0f))
     }
 }
