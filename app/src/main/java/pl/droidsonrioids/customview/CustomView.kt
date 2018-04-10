@@ -1,11 +1,7 @@
 package pl.droidsonrioids.customview
 
-import android.animation.Animator
-import android.animation.AnimatorListenerAdapter
-import android.animation.AnimatorSet
-import android.animation.TimeInterpolator
-import android.animation.ValueAnimator
-import android.animation.ValueAnimator.*
+import android.animation.*
+import android.animation.ValueAnimator.REVERSE
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.*
@@ -19,6 +15,8 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.pow
 
 
@@ -95,6 +93,7 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         handAnimator
+                .apply { startDelay = (Math.random() * 10).toLong() * 50 }
                 .playSequentially(
                         ValueAnimator.ofFloat(0f, -170f)
                                 .setDuration(800)
@@ -153,6 +152,35 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         super.onDetachedFromWindow()
     }
 
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val desiredHeight = suggestedMinimumHeight + paddingTop + paddingBottom
+        val desiredWidth = suggestedMinimumWidth + paddingLeft + paddingRight
+        setMeasuredDimension(
+                measureDimension(desiredWidth, widthMeasureSpec),
+                measureDimension(desiredHeight, heightMeasureSpec)
+        )
+    }
+
+    @SuppressLint("SwitchIntDef")
+    private fun measureDimension(desiredSize: Int, measureSpec: Int): Int {
+        val specMode = View.MeasureSpec.getMode(measureSpec)
+        val specSize = View.MeasureSpec.getSize(measureSpec)
+
+        return when (specMode) {
+            View.MeasureSpec.EXACTLY -> specSize
+            View.MeasureSpec.AT_MOST -> min(desiredSize, specSize)
+            else -> desiredSize
+        }
+    }
+
+    override fun getSuggestedMinimumHeight(): Int {
+        return max(super.getSuggestedMinimumHeight(), (androidWidth * 1.3f).toInt())
+    }
+
+    override fun getSuggestedMinimumWidth(): Int {
+        return max(super.getSuggestedMinimumWidth(), (androidWidth * 1.8f).toInt())
+    }
+
     override fun onDraw(canvas: Canvas) {
         val left = (width - androidWidth) / 2f
         val top = (height - androidWidth * 1.30f) / 2f
@@ -179,8 +207,10 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
     }
 
     private fun Canvas.drawBody(left: Float, top: Float) {
-        drawRect(left + androidWidth * 0.18f, top, left + androidWidth * 0.82f, top + androidWidth * 0.5f, paint)
-        drawRoundRect(left + androidWidth * 0.18f, top, left + androidWidth * 0.82f, top + androidWidth * 0.6f, androidWidth * 0.08f, androidWidth * 0.08f, paint)
+        val right = left + androidWidth * 0.82f
+        val leftWithOffset = left + androidWidth * 0.18f
+        drawRect(leftWithOffset, top, right, top + androidWidth * 0.5f, paint)
+        drawRoundRect(leftWithOffset, top, right, top + androidWidth * 0.6f, androidWidth * 0.08f, androidWidth * 0.08f, paint)
     }
 
     private fun Canvas.drawLimb(left: Float, top: Float) {
