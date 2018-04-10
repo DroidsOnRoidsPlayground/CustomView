@@ -23,11 +23,11 @@ import kotlin.math.pow
 
 
 class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0, defStyleRes: Int = 0) : View(context, attrs, defStyleAttr, defStyleRes) {
-    private val paint = Paint().apply {
-        color = Color.parseColor("#A4C639")
-    }
+    private val paint = Paint()
+    private val cutOutPaint = Paint()
 
-    private val androidWidth = context.resources.getDimensionPixelSize(R.dimen.width)
+    private val androidWidth: Int
+
     private val handAnimator = AnimatorSet()
     private var translation = Pair(0f, 0f)
     private val detectorListener = object : GestureDetector.SimpleOnGestureListener() {
@@ -49,6 +49,30 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     }
 
+    private val touchArea = RectF()
+
+    private val detector = GestureDetector(context, detectorListener)
+
+    private var handRotation = 0f
+    private val listener = ValueAnimator.AnimatorUpdateListener {
+        handRotation = it.animatedValue as Float
+        invalidate()
+    }
+
+    private val springX = SpringAnimation(FloatValueHolder()).setSpring(SpringForce().setStiffness(STIFFNESS_LOW))
+    private val springY = SpringAnimation(FloatValueHolder()).setSpring(SpringForce().setStiffness(STIFFNESS_LOW))
+    private val springXListener = DynamicAnimation.OnAnimationUpdateListener { _, value, _ -> translation = value to translation.second }
+    private val springYListener = DynamicAnimation.OnAnimationUpdateListener { _, value, _ -> translation = translation.first to value }
+
+    init {
+        setLayerType(LAYER_TYPE_HARDWARE, null)
+        val attributes = context.obtainStyledAttributes(attrs, R.styleable.CustomView, defStyleAttr, defStyleRes)
+        androidWidth = attributes.getDimensionPixelSize(R.styleable.CustomView_androidWidth, context.resources.getDimensionPixelSize(R.dimen.width))
+        paint.color = attributes.getColor(R.styleable.CustomView_color, Color.parseColor("#A4C639"))
+        cutOutPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        attributes.recycle()
+    }
+
     private fun cancelSpring() {
         springX.cancel()
         springY.cancel()
@@ -67,21 +91,6 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         }
         return false
     }
-
-    private val touchArea = RectF()
-
-    private val detector = GestureDetector(context, detectorListener)
-
-    private var handRotation = 0f
-    private val listener = ValueAnimator.AnimatorUpdateListener {
-        handRotation = it.animatedValue as Float
-        invalidate()
-    }
-
-    private val springX = SpringAnimation(FloatValueHolder()).setSpring(SpringForce().setStiffness(STIFFNESS_LOW))
-    private val springY = SpringAnimation(FloatValueHolder()).setSpring(SpringForce().setStiffness(STIFFNESS_LOW))
-    private val springXListener = DynamicAnimation.OnAnimationUpdateListener { _, value, _ -> translation = value to translation.second }
-    private val springYListener = DynamicAnimation.OnAnimationUpdateListener { _, value, _ -> translation = translation.first to value }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
@@ -146,40 +155,48 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     override fun onDraw(canvas: Canvas) {
         val left = (width - androidWidth) / 2f
-        val top = (height - androidWidth * 1.25f) / 2f
-        val handOffset = androidWidth * 0.37f
-        val legOffset = androidWidth * 0.7f
+        val top = (height - androidWidth * 1.30f) / 2f
+        val handOffset = androidWidth * 0.42f
+        val legOffset = androidWidth * 0.75f
         canvas.save()
         val (translationX, translationY) = translation
         canvas.translate(translationX, translationY)
         //head
-        drawHead(canvas, left + androidWidth * 0.18f, top)
+        canvas.drawHead(left + androidWidth * 0.18f, top + androidWidth * 0.05f)
         //left hand
-        drawLimb(canvas, left, top + handOffset)
+        canvas.drawLimb(left, top + handOffset)
         //left leg
-        drawLimb(canvas, left + androidWidth * 0.26f, top + legOffset)
+        canvas.drawLimb(left + androidWidth * 0.26f, top + legOffset)
         //right leg
-        drawLimb(canvas, left + androidWidth * 0.54f, top + legOffset)
+        canvas.drawLimb(left + androidWidth * 0.54f, top + legOffset)
         //body
-        drawBody(canvas, left, top + handOffset)
+        canvas.drawBody(left, top + handOffset)
         //right hand
         canvas.rotate(handRotation, left + androidWidth * 0.925f, top + handOffset + androidWidth * 0.075f)
-        drawLimb(canvas, left + androidWidth * 0.85f, top + handOffset)
+        canvas.drawLimb(left + androidWidth * 0.84f, top + handOffset)
         canvas.restore()
-        touchArea.set(left + translationX, top + translationY, left + androidWidth + translationX, top + androidWidth * 1.25f + translationY)
+        touchArea.set(left + translationX, top + translationY, left + androidWidth + translationX, top + androidWidth * 1.30f + translationY)
     }
 
-    private fun drawBody(canvas: Canvas, left: Float, top: Float) {
-        canvas.drawRect(left + androidWidth * 0.18f, top, left + androidWidth * 0.82f, top + androidWidth * 0.5f, paint)
-        canvas.drawRoundRect(left + androidWidth * 0.18f, top, left + androidWidth * 0.82f, top + androidWidth * 0.6f, androidWidth * 0.08f, androidWidth * 0.08f, paint)
+    private fun Canvas.drawBody(left: Float, top: Float) {
+        drawRect(left + androidWidth * 0.18f, top, left + androidWidth * 0.82f, top + androidWidth * 0.5f, paint)
+        drawRoundRect(left + androidWidth * 0.18f, top, left + androidWidth * 0.82f, top + androidWidth * 0.6f, androidWidth * 0.08f, androidWidth * 0.08f, paint)
     }
 
-    private fun drawLimb(canvas: Canvas, left: Float, top: Float) {
-        canvas.drawRoundRect(left, top, left + androidWidth * 0.16f, top + androidWidth * 0.55f, androidWidth * 0.1f, androidWidth * 0.1f, paint)
+    private fun Canvas.drawLimb(left: Float, top: Float) {
+        drawRoundRect(left, top, left + androidWidth * 0.16f, top + androidWidth * 0.55f, androidWidth * 0.1f, androidWidth * 0.1f, paint)
     }
 
-    private fun drawHead(canvas: Canvas, left: Float, top: Float) {
-        canvas.drawArc(left, top, left + androidWidth * 0.64f, top + androidWidth * 0.7f, 180f, 180f, true, paint)
+    private fun Canvas.drawHead(left: Float, top: Float) {
+        drawArc(left, top, left + androidWidth * 0.64f, top + androidWidth * 0.7f, 180f, 180f, true, paint)
+        val eyesOffset = androidWidth * 0.17f
+        rotate(40f, left + androidWidth * 0.32f, top + androidWidth * 0.25f)
+        drawRoundRect(left + androidWidth * 0.29f, top - androidWidth * 0.13f, left + androidWidth * 0.35f, top + androidWidth * 0.1f, androidWidth * 0.2f, androidWidth * 0.2f, paint)
+        rotate(-80f, left + androidWidth * 0.32f, top + androidWidth * 0.25f)
+        drawRoundRect(left + androidWidth * 0.29f, top - androidWidth * 0.13f, left + androidWidth * 0.35f, top + androidWidth * 0.1f, androidWidth * 0.2f, androidWidth * 0.2f, paint)
+        rotate(40f, left + androidWidth * 0.32f, top + androidWidth * 0.25f)
+        drawCircle(left + androidWidth * 0.2f, top + eyesOffset, androidWidth * 0.02f, cutOutPaint)
+        drawCircle(left + androidWidth * 0.42f, top + eyesOffset, androidWidth * 0.02f, cutOutPaint)
     }
 
     @SuppressLint("ClickableViewAccessibility")
