@@ -194,9 +194,9 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         //left hand
         canvas.drawLimb(left, top + handOffset)
         //left leg
-        canvas.drawLimb(left + androidWidth * 0.26f, top + legOffset)
+        canvas.drawLimb(left + androidWidth * 0.28f, top + legOffset)
         //right leg
-        canvas.drawLimb(left + androidWidth * 0.54f, top + legOffset)
+        canvas.drawLimb(left + androidWidth * 0.56f, top + legOffset)
         //body
         canvas.drawBody(left, top + handOffset)
         //right hand
