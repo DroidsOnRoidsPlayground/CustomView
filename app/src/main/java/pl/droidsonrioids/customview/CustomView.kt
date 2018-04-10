@@ -1,10 +1,11 @@
 package pl.droidsonrioids.customview
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
 import android.animation.AnimatorSet
 import android.animation.TimeInterpolator
 import android.animation.ValueAnimator
-import android.animation.ValueAnimator.INFINITE
-import android.animation.ValueAnimator.RESTART
+import android.animation.ValueAnimator.*
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.*
@@ -13,26 +14,21 @@ import android.support.animation.FloatValueHolder
 import android.support.animation.SpringAnimation
 import android.support.animation.SpringForce
 import android.support.animation.SpringForce.STIFFNESS_LOW
-import android.support.v4.view.animation.FastOutSlowInInterpolator
 import android.util.AttributeSet
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
-import android.view.animation.AccelerateDecelerateInterpolator
+import kotlin.math.abs
+import kotlin.math.pow
 
 
 class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0, defStyleRes: Int = 0) : View(context, attrs, defStyleAttr, defStyleRes) {
-    private val paint = Paint()
-    private val arcPaint = Paint()
+    private val paint = Paint().apply {
+        color = Color.parseColor("#A4C639")
+    }
+
     private val androidWidth = context.resources.getDimensionPixelSize(R.dimen.width)
-    private val androidHeight = context.resources.getDimensionPixelSize(R.dimen.height)
-    private val radius = context.resources.getDimension(R.dimen.radius)
-    private val animator = ValueAnimator.ofFloat(0f, -180f, -100f, -180f, -100f, -180f, 0f)
-            .setDuration(3000)
-            .apply {
-                repeatMode = RESTART
-                repeatCount = INFINITE
-            }
+    private val handAnimator = AnimatorSet()
     private var translation = Pair(0f, 0f)
     private val detectorListener = object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean {
@@ -89,47 +85,101 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
-        animator.addUpdateListener(listener)
+        handAnimator
+                .playSequentially(
+                        ValueAnimator.ofFloat(0f, -170f)
+                                .setDuration(800)
+                                .apply {
+                                    addUpdateListener(listener)
+                                    interpolator = TimeInterpolator { getPowInOut(it, 2) }
+                                },
+                        ValueAnimator.ofFloat(-170f, -100f)
+                                .setDuration(500)
+                                .apply {
+                                    addUpdateListener(listener)
+                                    interpolator = TimeInterpolator { getPowInOut(it, 2) }
+                                    repeatMode = REVERSE
+                                    repeatCount = 5
+                                },
+                        ValueAnimator.ofFloat(-170f, 0f)
+                                .setDuration(800)
+                                .apply {
+                                    addUpdateListener(listener)
+                                    interpolator = TimeInterpolator { getPowInOut(it, 5) }
+                                }
+                )
+        handAnimator.addListener(object : AnimatorListenerAdapter() {
+            private var canceled: Boolean = false
+
+            override fun onAnimationCancel(animation: Animator?) {
+                canceled = true
+            }
+
+            override fun onAnimationEnd(animation: Animator?) {
+                if (!canceled) {
+                    handAnimator.start()
+                } else {
+                    canceled = true
+                }
+            }
+        })
         springX.addUpdateListener(springXListener)
         springY.addUpdateListener(springYListener)
-        animator.start()
+        handAnimator.start()
+    }
+
+    private fun getPowInOut(fraction: Float, pow: Int): Float {
+        (fraction * 2).let {
+            return if (it < 1) 0.5f * it.pow(pow)
+            else 1f - 0.5f * abs((2f - it).pow(pow))
+        }
+
     }
 
     override fun onDetachedFromWindow() {
-        animator.removeUpdateListener(listener)
         springX.removeUpdateListener(springXListener)
         springY.removeUpdateListener(springYListener)
-        animator.cancel()
+        handAnimator.cancel()
         cancelSpring()
         super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {
         val left = (width - androidWidth) / 2f
-        val top = (height - androidHeight) / 2f
-        paint.color = Color.parseColor("#FF0000")
-        arcPaint.color = Color.parseColor("#A4C639")
-        val right = width - left
-        val bottom = height - top
-        val halfWidth = (right - left) / 2
+        val top = (height - androidWidth * 1.25f) / 2f
+        val handOffset = androidWidth * 0.37f
+        val legOffset = androidWidth * 0.7f
         canvas.save()
         val (translationX, translationY) = translation
         canvas.translate(translationX, translationY)
         //head
-        canvas.drawArc(left, top - halfWidth / 8 - halfWidth, right, top - halfWidth / 8 + halfWidth, 180f, 180f, true, arcPaint)
+        drawHead(canvas, left + androidWidth * 0.18f, top)
         //left hand
-        canvas.drawRoundRect(left - halfWidth / 2, top, left - halfWidth / 8, bottom - halfWidth / 2, radius, radius, arcPaint)
+        drawLimb(canvas, left, top + handOffset)
         //left leg
-        canvas.drawRoundRect(left + halfWidth / 4, bottom - radius, left + halfWidth / 1.3f, bottom + halfWidth, radius, radius, arcPaint)
+        drawLimb(canvas, left + androidWidth * 0.26f, top + legOffset)
         //right leg
-        canvas.drawRoundRect(right - halfWidth / 4, bottom - radius, right - halfWidth / 1.3f, bottom + halfWidth, radius, radius, arcPaint)
+        drawLimb(canvas, left + androidWidth * 0.54f, top + legOffset)
         //body
-        canvas.drawRoundRect(left, top, right, bottom, radius, radius, arcPaint)
+        drawBody(canvas, left, top + handOffset)
         //right hand
-        canvas.rotate(handRotation, right + halfWidth / 3, top + halfWidth / 8)
-        canvas.drawRoundRect(right + halfWidth / 8, top, right + halfWidth / 2, bottom - halfWidth / 2, radius, radius, arcPaint)
+        canvas.rotate(handRotation, left + androidWidth * 0.925f, top + handOffset + androidWidth * 0.075f)
+        drawLimb(canvas, left + androidWidth * 0.85f, top + handOffset)
         canvas.restore()
-        touchArea.set(left + translationX, top + translationY, right + translationX, bottom + translationY)
+        touchArea.set(left + translationX, top + translationY, left + androidWidth + translationX, top + androidWidth * 1.25f + translationY)
+    }
+
+    private fun drawBody(canvas: Canvas, left: Float, top: Float) {
+        canvas.drawRect(left + androidWidth * 0.18f, top, left + androidWidth * 0.82f, top + androidWidth * 0.5f, paint)
+        canvas.drawRoundRect(left + androidWidth * 0.18f, top, left + androidWidth * 0.82f, top + androidWidth * 0.6f, androidWidth * 0.08f, androidWidth * 0.08f, paint)
+    }
+
+    private fun drawLimb(canvas: Canvas, left: Float, top: Float) {
+        canvas.drawRoundRect(left, top, left + androidWidth * 0.16f, top + androidWidth * 0.55f, androidWidth * 0.1f, androidWidth * 0.1f, paint)
+    }
+
+    private fun drawHead(canvas: Canvas, left: Float, top: Float) {
+        canvas.drawArc(left, top, left + androidWidth * 0.64f, top + androidWidth * 0.7f, 180f, 180f, true, paint)
     }
 
     @SuppressLint("ClickableViewAccessibility")
