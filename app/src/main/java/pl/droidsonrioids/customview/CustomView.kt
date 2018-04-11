@@ -8,6 +8,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.os.Parcelable
 import android.support.animation.DynamicAnimation
 import android.support.animation.FloatValueHolder
 import android.support.animation.SpringAnimation
@@ -77,6 +78,9 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         handRotation = it.animatedValue as Float
         invalidate()
     }
+
+    private var isRotating = false
+    private var baseRotation = 0f
 
     private val springX = SpringAnimation(FloatValueHolder()).setSpring(SpringForce().setStiffness(STIFFNESS_LOW))
     private val springY = SpringAnimation(FloatValueHolder()).setSpring(SpringForce().setStiffness(STIFFNESS_LOW))
@@ -224,6 +228,7 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         canvas.run {
             save()
             translate(currentTranslationX, currentTranslationY)
+            rotate(androidRotation, left + androidWidth / 2f, top + androidWidth / 2f)
 
             //head
             drawHead(left + androidWidth * 0.18f, top + androidWidth * 0.05f)
@@ -268,6 +273,42 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        return detector.onTouchEvent(event) || (event.action == MotionEvent.ACTION_UP && onScrollEnd(0f, 0f))
+        when (event.actionMasked) {
+            MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount == 2) {
+                baseRotation = androidRotation + calculateRotation(event)
+                isRotating = true
+            }
+            MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> if (event.pointerCount == 2) isRotating = false
+            MotionEvent.ACTION_MOVE -> if (isRotating) updateRotation(event)
+        }
+        return isRotating || detector.onTouchEvent(event) || (event.action == MotionEvent.ACTION_UP && onScrollEnd(0f, 0f))
+    }
+
+    private var androidRotation = 0f
+
+    private fun updateRotation(event: MotionEvent) {
+        androidRotation = baseRotation - calculateRotation(event)
+        invalidate()
+    }
+
+    private fun calculateRotation(event: MotionEvent): Float {
+        val deltaX = (event.getX(0) - event.getX(1)).toDouble()
+        val deltaY = (event.getY(0) - event.getY(1)).toDouble()
+        val radians = Math.atan2(deltaY, deltaX)
+        return -Math.toDegrees(radians).toFloat()
+    }
+
+    override fun onSaveInstanceState(): Parcelable {
+        return CustomSavedState(super.onSaveInstanceState(), androidRotation)
+    }
+
+    override fun onRestoreInstanceState(state: Parcelable?) {
+        val customSavedState = state as? CustomSavedState
+        super.onRestoreInstanceState(customSavedState?.superState)
+        customSavedState?.let {
+            androidRotation = it.androidRotation
+        }
     }
 }
+
+class CustomSavedState(superState: Parcelable, val androidRotation: Float) : View.BaseSavedState(superState)
