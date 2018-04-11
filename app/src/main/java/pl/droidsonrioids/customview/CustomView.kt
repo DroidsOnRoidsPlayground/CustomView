@@ -27,17 +27,21 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
     private val androidWidth: Int
 
     private val handAnimator = AnimatorSet()
-    private var translation = Pair(0f, 0f)
+    private val translation = floatArrayOf(0f, 0f)
     private val detectorListener = object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean {
-            return touchArea.contains(e.x, e.y)
+            val handleTouch = touchArea.contains(e.x, e.y)
+            if (handleTouch) {
+                parent.requestDisallowInterceptTouchEvent(true)
+            }
+            return handleTouch
         }
 
         override fun onScroll(start: MotionEvent, end: MotionEvent, distanceX: Float, distanceY: Float): Boolean {
             cancelSpring()
-            with(translation) {
-                translation = first - distanceX to second - distanceY
-            }
+            translation[0] -= distanceX
+            translation[1] -= distanceY
+            invalidate()
             return true
         }
 
@@ -59,8 +63,8 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     private val springX = SpringAnimation(FloatValueHolder()).setSpring(SpringForce().setStiffness(STIFFNESS_LOW))
     private val springY = SpringAnimation(FloatValueHolder()).setSpring(SpringForce().setStiffness(STIFFNESS_LOW))
-    private val springXListener = DynamicAnimation.OnAnimationUpdateListener { _, value, _ -> translation = value to translation.second }
-    private val springYListener = DynamicAnimation.OnAnimationUpdateListener { _, value, _ -> translation = translation.first to value }
+    private val springXListener = DynamicAnimation.OnAnimationUpdateListener { _, value, _ -> translation[0] = value; invalidate() }
+    private val springYListener = DynamicAnimation.OnAnimationUpdateListener { _, value, _ -> translation[1] = value; invalidate() }
 
     init {
         setLayerType(LAYER_TYPE_HARDWARE, null)
@@ -77,6 +81,7 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
     }
 
     private fun onScrollEnd(velocityX: Float, velocityY: Float): Boolean {
+        parent.requestDisallowInterceptTouchEvent(false)
         val (x, y) = translation
         if (x != 0f && y != 0f) {
             springX.setStartVelocity(velocityX)
@@ -126,9 +131,8 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
             override fun onAnimationEnd(animation: Animator?) {
                 if (!canceled) {
                     handAnimator.start()
-                } else {
-                    canceled = true
                 }
+                canceled = false
             }
         })
         springX.addUpdateListener(springXListener)
@@ -186,23 +190,25 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         val top = (height - androidWidth * 1.30f) / 2f
         val handOffset = androidWidth * 0.42f
         val legOffset = androidWidth * 0.75f
-        canvas.save()
-        val (translationX, translationY) = translation
-        canvas.translate(translationX, translationY)
-        //head
-        canvas.drawHead(left + androidWidth * 0.18f, top + androidWidth * 0.05f)
-        //left hand
-        canvas.drawLimb(left, top + handOffset)
-        //left leg
-        canvas.drawLimb(left + androidWidth * 0.28f, top + legOffset)
-        //right leg
-        canvas.drawLimb(left + androidWidth * 0.56f, top + legOffset)
-        //body
-        canvas.drawBody(left, top + handOffset)
-        //right hand
-        canvas.rotate(handRotation, left + androidWidth * 0.925f, top + handOffset + androidWidth * 0.075f)
-        canvas.drawLimb(left + androidWidth * 0.84f, top + handOffset)
-        canvas.restore()
+        canvas.run {
+            save()
+            val (translationX, translationY) = translation
+            translate(translationX, translationY)
+            //head
+            drawHead(left + androidWidth * 0.18f, top + androidWidth * 0.05f)
+            //left hand
+            drawLimb(left, top + handOffset)
+            //left leg
+            drawLimb(left + androidWidth * 0.28f, top + legOffset)
+            //right leg
+            drawLimb(left + androidWidth * 0.56f, top + legOffset)
+            //body
+            drawBody(left, top + handOffset)
+            //right hand
+            rotate(handRotation, left + androidWidth * 0.925f, top + handOffset + androidWidth * 0.075f)
+            drawLimb(left + androidWidth * 0.84f, top + handOffset)
+            restore()
+        }
         touchArea.set(left + translationX, top + translationY, left + androidWidth + translationX, top + androidWidth * 1.30f + translationY)
     }
 
