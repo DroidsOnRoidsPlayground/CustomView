@@ -31,8 +31,11 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_margin="20dp"
+            app:limitToBounds="true"
             android:background="@color/colorPrimary"
-            android:padding="10dp"
+            android:paddingTop="120dp"
+            android:paddingStart="120dp"
+            android:paddingEnd="0dp"
             app:androidWidth="60dp"/>
     </LinearLayout>
 </ScrollView>

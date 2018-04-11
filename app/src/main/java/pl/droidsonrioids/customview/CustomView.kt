@@ -4,7 +4,10 @@ import android.animation.*
 import android.animation.ValueAnimator.REVERSE
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.*
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import android.support.animation.DynamicAnimation
 import android.support.animation.FloatValueHolder
 import android.support.animation.SpringAnimation
@@ -24,7 +27,18 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
     private val paint = Paint()
     private val cutOutPaint = Paint()
 
-    private val androidWidth: Int
+    var androidWidth: Int = context.resources.getDimensionPixelSize(R.dimen.width)
+        set(value) {
+            field = value
+            requestLayout()
+        }
+    var limitToBounds: Boolean = false
+    var color: Int
+        get() = paint.color
+        set(value) {
+            paint.color = value
+            invalidate()
+        }
 
     private val handAnimator = AnimatorSet()
     private val translation = floatArrayOf(0f, 0f)
@@ -49,6 +63,9 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
             return onScrollEnd(velocityX, velocityY)
         }
 
+        override fun onSingleTapConfirmed(e: MotionEvent?): Boolean {
+            return performClick()
+        }
     }
 
     private val touchArea = RectF()
@@ -66,12 +83,21 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
     private val springXListener = DynamicAnimation.OnAnimationUpdateListener { _, value, _ -> translation[0] = value; invalidate() }
     private val springYListener = DynamicAnimation.OnAnimationUpdateListener { _, value, _ -> translation[1] = value; invalidate() }
 
+    private val drawingWidth get() = max(width - paddingLeft - paddingRight, 0)
+    private val drawingHeight get() = max(height - paddingTop - paddingBottom, 0)
+    private val maxTranslationX get() = if (limitToBounds) max(drawingWidth / 2f - androidWidth * 0.9f + paddingRight, 0f) else Float.POSITIVE_INFINITY
+    private val minTranslationX get() = if (limitToBounds) min(-drawingWidth / 2f + androidWidth * 0.5f - paddingLeft, 0f) else Float.NEGATIVE_INFINITY
+    private val maxTranslationY get() = if (limitToBounds) max(drawingHeight / 2f - androidWidth * 0.65f + paddingBottom, 0f) else Float.POSITIVE_INFINITY
+    private val minTranslationY get() = if (limitToBounds) min(-drawingHeight / 2f + androidWidth * 0.65f - paddingTop, 0f) else Float.NEGATIVE_INFINITY
+    private val currentTranslationX get() = translation[0].coerceIn(minTranslationX, maxTranslationX)
+    private val currentTranslationY get() = translation[1].coerceIn(minTranslationY, maxTranslationY)
+
     init {
-        setLayerType(LAYER_TYPE_HARDWARE, null)
         val attributes = context.obtainStyledAttributes(attrs, R.styleable.CustomView, defStyleAttr, defStyleRes)
-        androidWidth = attributes.getDimensionPixelSize(R.styleable.CustomView_androidWidth, context.resources.getDimensionPixelSize(R.dimen.width))
+        androidWidth = attributes.getDimensionPixelSize(R.styleable.CustomView_androidWidth, androidWidth)
+        limitToBounds = attributes.getBoolean(R.styleable.CustomView_limitToBounds, limitToBounds)
         paint.color = attributes.getColor(R.styleable.CustomView_color, Color.parseColor("#A4C639"))
-        cutOutPaint.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        cutOutPaint.color = Color.WHITE
         attributes.recycle()
     }
 
@@ -82,13 +108,18 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
 
     private fun onScrollEnd(velocityX: Float, velocityY: Float): Boolean {
         parent.requestDisallowInterceptTouchEvent(false)
-        val (x, y) = translation
-        if (x != 0f && y != 0f) {
+        val x = currentTranslationX
+        val y = currentTranslationY
+        if (x != 0f || y != 0f) {
             springX.setStartVelocity(velocityX)
                     .setStartValue(x)
+                    .setMaxValue(maxTranslationX)
+                    .setMinValue(minTranslationX)
                     .animateToFinalPosition(0f)
             springY.setStartVelocity(velocityY)
                     .setStartValue(y)
+                    .setMaxValue(maxTranslationY)
+                    .setMinValue(minTranslationY)
                     .animateToFinalPosition(0f)
             return true
         }
@@ -186,14 +217,14 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
     }
 
     override fun onDraw(canvas: Canvas) {
-        val left = (width - androidWidth) / 2f
-        val top = (height - androidWidth * 1.30f) / 2f
+        val left = (drawingWidth - androidWidth) / 2f + paddingLeft
+        val top = (drawingHeight - androidWidth * 1.30f) / 2f + paddingTop
         val handOffset = androidWidth * 0.42f
         val legOffset = androidWidth * 0.75f
         canvas.run {
             save()
-            val (translationX, translationY) = translation
-            translate(translationX, translationY)
+            translate(currentTranslationX, currentTranslationY)
+
             //head
             drawHead(left + androidWidth * 0.18f, top + androidWidth * 0.05f)
             //left hand
