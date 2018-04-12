@@ -4,10 +4,7 @@ import android.animation.*
 import android.animation.ValueAnimator.REVERSE
 import android.annotation.SuppressLint
 import android.content.Context
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RectF
+import android.graphics.*
 import android.os.Parcelable
 import android.support.animation.DynamicAnimation
 import android.support.animation.FloatValueHolder
@@ -26,11 +23,14 @@ import kotlin.math.pow
 
 class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet? = null, defStyleAttr: Int = 0, defStyleRes: Int = 0) : View(context, attrs, defStyleAttr, defStyleRes) {
     private val paint = Paint()
-    private val cutOutPaint = Paint()
 
+    private var radius = FloatArray(8)
+    private var bodyRadius = FloatArray(8)
     var androidWidth: Int = context.resources.getDimensionPixelSize(R.dimen.width)
         set(value) {
             field = value
+            radius.fill(value * 0.2f)
+            bodyRadius.fill(value * 0.1f, fromIndex = 4)
             requestLayout()
         }
     var limitToBounds: Boolean = false
@@ -101,7 +101,6 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         androidWidth = attributes.getDimensionPixelSize(R.styleable.CustomView_androidWidth, androidWidth)
         limitToBounds = attributes.getBoolean(R.styleable.CustomView_limitToBounds, limitToBounds)
         paint.color = attributes.getColor(R.styleable.CustomView_color, Color.parseColor("#A4C639"))
-        cutOutPaint.color = Color.WHITE
         attributes.recycle()
     }
 
@@ -220,16 +219,19 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
         return max(super.getSuggestedMinimumWidth(), (androidWidth * 1.8f).toInt())
     }
 
+    private val path = Path()
+    private val drawMatrix = Matrix()
     override fun onDraw(canvas: Canvas) {
         val left = (drawingWidth - androidWidth) / 2f + paddingLeft
         val top = (drawingHeight - androidWidth * 1.30f) / 2f + paddingTop
         val handOffset = androidWidth * 0.42f
         val legOffset = androidWidth * 0.75f
-        canvas.run {
-            save()
-            translate(currentTranslationX, currentTranslationY)
-            rotate(androidRotation, left + androidWidth / 2f, top + androidWidth / 2f)
-
+        drawMatrix.reset()
+        path.run {
+            reset()
+            //right hand
+            drawLimb(left + androidWidth * 0.84f, top + handOffset)
+            rotate(handRotation, left + androidWidth * 0.925f, top + handOffset + androidWidth * 0.075f)
             //head
             drawHead(left + androidWidth * 0.18f, top + androidWidth * 0.05f)
             //left hand
@@ -240,48 +242,102 @@ class CustomView @JvmOverloads constructor(context: Context, attrs: AttributeSet
             drawLimb(left + androidWidth * 0.56f, top + legOffset)
             //body
             drawBody(left, top + handOffset)
-            //right hand
-            rotate(handRotation, left + androidWidth * 0.925f, top + handOffset + androidWidth * 0.075f)
-            drawLimb(left + androidWidth * 0.84f, top + handOffset)
-            restore()
+            transform(transformation)
+//            drawMatrix.postRotate(androidRotation, left + androidWidth / 2f, top + androidWidth / 2f)
+//            drawMatrix.postTranslate(currentTranslationX, currentTranslationY)
+            transform(drawMatrix)
+            computeBounds(touchArea, true)
+            canvas.drawPath(this, paint)
         }
-        touchArea.set(left + translationX, top + translationY, left + androidWidth + translationX, top + androidWidth * 1.30f + translationY)
+        //        touchArea.set(left + translationX, top + translationY, left + androidWidth + translationX, top + androidWidth * 1.30f + translationY)
     }
 
-    private fun Canvas.drawBody(left: Float, top: Float) {
+    private fun Path.drawBody(left: Float, top: Float) {
         val right = left + androidWidth * 0.82f
         val leftWithOffset = left + androidWidth * 0.18f
-        drawRect(leftWithOffset, top, right, top + androidWidth * 0.5f, paint)
-        drawRoundRect(leftWithOffset, top, right, top + androidWidth * 0.6f, androidWidth * 0.08f, androidWidth * 0.08f, paint)
+        addRoundRect(leftWithOffset, top, right, top + androidWidth * 0.6f, bodyRadius, Path.Direction.CW)
     }
 
-    private fun Canvas.drawLimb(left: Float, top: Float) {
-        drawRoundRect(left, top, left + androidWidth * 0.16f, top + androidWidth * 0.55f, androidWidth * 0.1f, androidWidth * 0.1f, paint)
+    private fun Path.drawLimb(left: Float, top: Float) {
+        addRoundRect(left, top, left + androidWidth * 0.16f, top + androidWidth * 0.55f, radius, Path.Direction.CW)
     }
 
-    private fun Canvas.drawHead(left: Float, top: Float) {
-        drawArc(left, top, left + androidWidth * 0.64f, top + androidWidth * 0.7f, 180f, 180f, true, paint)
+    private val cutOutPath = Path()
+
+    private fun Path.drawHead(left: Float, top: Float) {
+        addArc(left, top, left + androidWidth * 0.64f, top + androidWidth * 0.7f, 180f, 180f)
         val eyesOffset = androidWidth * 0.17f
         rotate(40f, left + androidWidth * 0.32f, top + androidWidth * 0.25f)
-        drawRoundRect(left + androidWidth * 0.29f, top - androidWidth * 0.13f, left + androidWidth * 0.35f, top + androidWidth * 0.1f, androidWidth * 0.2f, androidWidth * 0.2f, paint)
+        addRoundRect(left + androidWidth * 0.29f, top - androidWidth * 0.13f, left + androidWidth * 0.35f, top + androidWidth * 0.1f, radius, Path.Direction.CW)
         rotate(-80f, left + androidWidth * 0.32f, top + androidWidth * 0.25f)
-        drawRoundRect(left + androidWidth * 0.29f, top - androidWidth * 0.13f, left + androidWidth * 0.35f, top + androidWidth * 0.1f, androidWidth * 0.2f, androidWidth * 0.2f, paint)
+        addRoundRect(left + androidWidth * 0.29f, top - androidWidth * 0.13f, left + androidWidth * 0.35f, top + androidWidth * 0.1f, radius, Path.Direction.CW)
         rotate(40f, left + androidWidth * 0.32f, top + androidWidth * 0.25f)
-        drawCircle(left + androidWidth * 0.2f, top + eyesOffset, androidWidth * 0.02f, cutOutPaint)
-        drawCircle(left + androidWidth * 0.42f, top + eyesOffset, androidWidth * 0.02f, cutOutPaint)
+        cutOutPath.reset()
+        cutOutPath.addCircle(left + androidWidth * 0.2f, top + eyesOffset, androidWidth * 0.02f, Path.Direction.CW)
+        cutOutPath.addCircle(left + androidWidth * 0.42f, top + eyesOffset, androidWidth * 0.02f, Path.Direction.CW)
+        op(cutOutPath, Path.Op.DIFFERENCE)
+        fillType = Path.FillType.WINDING
     }
+
+    private var isTransforming = false
+
+    private var baseTransformation = Matrix()
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
-            MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount == 2) {
-                baseRotation = androidRotation + calculateRotation(event)
-                isRotating = true
+            MotionEvent.ACTION_POINTER_DOWN -> when (event.pointerCount) {
+                2 -> {
+                    baseRotation = androidRotation + calculateRotation(event)
+                    isRotating = true
+                }
+                3 -> {
+                    val matrix = transformMatrix(event)
+                    matrix.postConcat(transformation)
+                    matrix.invert(baseTransformation)
+                    isRotating = false
+                    isTransforming = true
+                }
             }
-            MotionEvent.ACTION_POINTER_UP, MotionEvent.ACTION_CANCEL -> if (event.pointerCount == 2) isRotating = false
-            MotionEvent.ACTION_MOVE -> if (isRotating) updateRotation(event)
+            MotionEvent.ACTION_POINTER_UP -> when (event.pointerCount) {
+                2 -> isRotating = false
+                3 -> {
+                    isRotating = true
+                    baseRotation = androidRotation + calculateRotation(event)
+                    isTransforming = false
+                }
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                isRotating = false
+                isTransforming = false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (isRotating) updateRotation(event)
+                if (isTransforming) transform(event)
+            }
         }
-        return isRotating || detector.onTouchEvent(event) || (event.action == MotionEvent.ACTION_UP && onScrollEnd(0f, 0f))
+        return isTransforming || isRotating || detector.onTouchEvent(event) || ((event.action == MotionEvent.ACTION_UP || event.action == MotionEvent.ACTION_CANCEL) && onScrollEnd(0f, 0f))
+    }
+
+    private var transformation = Matrix()
+
+    private fun transform(event: MotionEvent) {
+        val transformMatrix = transformMatrix(event)
+        transformMatrix.preConcat(baseTransformation)
+        transformation = transformMatrix
+        invalidate()
+    }
+
+    private fun transformMatrix(event: MotionEvent): Matrix {
+        val xs = (0..2).map { event.getX(it) }
+        val ys = (0..2).map { event.getY(it) }
+        return Matrix().apply { setValues((xs + ys + List(3) { 1f }).toFloatArray()) }
+    }
+
+    private fun Path.rotate(degrees: Float, left: Float, top: Float) {
+        drawMatrix.postRotate(degrees, left, top)
+        transform(drawMatrix)
+        drawMatrix.reset()
     }
 
     private var androidRotation = 0f
